@@ -106,6 +106,8 @@ module Excon
     end
 
     def write(data)
+      attempts = 0
+
       # We normally return from the return in the else block below, but
       # we guard that data is still something in case we get weird
       # values and String#[] returns nil. (This behavior has been observed
@@ -115,6 +117,14 @@ module Excon
           # I wish that this API accepted a start position, then we wouldn't
           # have to slice data when there is a short write.
           written = @socket.write_nonblock(data)
+        # Amazon S3 sometimes causes these errors, so just retry them
+        rescue Errno::ECONNRESET
+          attempts = attempts + 1
+          if attempts < 100
+            retry
+          else
+            raise(Excon::Errors::Error.new("Connection reset by peer, failed after #{attempts} attempts"))
+          end
         rescue OpenSSL::SSL::SSLError => error
           if error.message == 'write would block'
             if IO.select(nil, [@socket], nil, @params[:write_timeout])
@@ -152,3 +162,4 @@ module Excon
 
   end
 end
+
